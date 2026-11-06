@@ -18,8 +18,8 @@ from urllib.parse import parse_qs, urlparse
 ROOT = Path(__file__).resolve().parent
 STATE_FILE = ROOT / "payment_tracker_data.json"
 INPUT_FILE = ROOT / "input.txt"
-HOST = "127.0.0.1"
-PORT = 8000
+HOST = "0.0.0.0"
+PORT = int(os.environ.get("PORT", "8000"))
 MAX_REQUEST_SIZE = 1_000_000
 NUMBERED_LINE = re.compile(r"^\s*(\d+)(?:\s*[.)\-:]\s*|\s+)(.+?)\s*$")
 EMOJI_CHARACTERS = re.compile(
@@ -480,6 +480,30 @@ class TrackerHandler(BaseHTTPRequestHandler):
         if not isinstance(payload, dict):
             raise ValueError("Request body must be a JSON object.")
         return payload
+
+    def do_HEAD(self) -> None:
+      parsed = urlparse(self.path)
+
+      if parsed.path == "/":
+          body = PAGE.encode("utf-8")
+          content_type = "text/html; charset=utf-8"
+          status = 200
+      elif parsed.path == "/api/state":
+          voter_id = parse_qs(parsed.query).get("voter_id", [""])[0]
+          body = json.dumps(public_state(voter_id), ensure_ascii=False).encode("utf-8")
+          content_type = "application/json; charset=utf-8"
+          status = 200
+      else:
+          body = json.dumps({"error": "Not found."}).encode("utf-8")
+          content_type = "application/json; charset=utf-8"
+          status = 404
+
+      self.send_response(status)
+      self.send_header("Content-Type", content_type)
+      self.send_header("Content-Length", str(len(body)))
+      if parsed.path.startswith("/api/"):
+          self.send_header("Cache-Control", "no-store")
+      self.end_headers()
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
